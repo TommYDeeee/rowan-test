@@ -7,7 +7,7 @@ pub const PARAM_LIST: SyntaxKind = SyntaxKind(3);
 pub const BIN_EXPR: SyntaxKind = SyntaxKind(4);
 
 // Tokens
-pub const WHITESPACE: SyntaxKind = SyntaxKind(099);
+pub const WHITESPACE: SyntaxKind = SyntaxKind(99);
 pub const IDENT: SyntaxKind = SyntaxKind(100);
 pub const FN_KW: SyntaxKind = SyntaxKind(101);
 pub const INT: SyntaxKind = SyntaxKind(102);

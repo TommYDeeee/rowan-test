@@ -61,18 +61,18 @@ impl GreenNodeData {
         self.len
     }
 
-    pub fn children(&self) -> &[GreenElement] {
-        self.children.as_slice()
+    pub fn children<'a>(&'a self) -> impl Iterator<Item = GreenElement> + '_ {
+        self.children.iter().cloned()
     }
 
     pub fn replace_child(&self, idx: usize, new_child: GreenElement) -> GreenNodeData {
-        assert!(idx < self.children().len());
+        assert!(idx < self.children.len());
 
-        let left_children = self.children().iter().take(idx).cloned();
+        let left_children = self.children().take(idx);
 
-        let right_children = self.children().iter().skip(idx + 1).cloned();
+        let right_children = self.children().skip(idx + 1);
 
-        let new_children = left_children
+        let new_children: Vec<_> = left_children
             .chain(iter::once(new_child))
             .chain(right_children)
             .collect();
@@ -83,20 +83,20 @@ impl GreenNodeData {
 
 impl From<GreenNode> for GreenElement {
     fn from(node: GreenNode) -> Self {
-        NodeOrToken::Node(node)
+        Self::Node(node)
     }
 }
 
 impl From<GreenToken> for GreenElement {
     fn from(token: GreenToken) -> Self {
-        NodeOrToken::Token(token)
+        Self::Token(token)
     }
 }
 
 impl fmt::Display for GreenNodeData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for child in self.children() {
-            fmt::Display::fmt(child, f)?;
+            fmt::Display::fmt(&child, f)?;
         }
         Ok(())
     }

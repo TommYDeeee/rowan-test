@@ -30,6 +30,22 @@ pub enum NodeOrToken<N, T> {
     Token(T),
 }
 
+impl<N, T> NodeOrToken<N, T> {
+    pub fn into_node(self) -> Option<N> {
+        match self {
+            NodeOrToken::Node(it) => Some(it),
+            NodeOrToken::Token(_) => None,
+        }
+    }
+
+    pub fn into_token(self) -> Option<T> {
+        match self {
+            NodeOrToken::Node(_) => None,
+            NodeOrToken::Token(it) => Some(it),
+        }
+    }
+}
+
 #[test]
 fn smoke() {
     let ws = Arc::new(GreenTokenData::new(kinds::WHITESPACE, " ".to_string()));
@@ -57,11 +73,20 @@ fn smoke() {
             multiplication.clone().into(),
             ws.clone().into(),
             plus.into(),
-            ws.clone().into(),
+            ws.into(),
             multiplication.into(),
         ],
     ));
 
     eprintln!("addition = {:?}", addition);
     eprintln!("{}", addition);
+
+    let addition = RedNodeData::new_root(addition);
+    let mul2 = addition.children().nth(4).unwrap().into_node().unwrap();
+
+    let three = Arc::new(GreenTokenData::new(kinds::INT, "3".to_string()));
+
+    let new_root = mul2.replace_child(0, three.into());
+
+    println!("{}", new_root);
 }
