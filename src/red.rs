@@ -66,13 +66,13 @@ impl RedNodeData {
                         parent: Some(Rc::clone(self)),
                         index_in_parent,
                         green: node,
-                        text_offset: text_offset,
+                        text_offset,
                     })
                     .into(),
                     NodeOrToken::Token(token) => Rc::new(RedTokenData {
                         parent: Some(Rc::clone(self)),
                         green: token,
-                        text_offset: text_offset,
+                        text_offset,
                     })
                     .into(),
                 }
@@ -88,7 +88,7 @@ impl RedNodeData {
     fn replace_ourselves(self: &RedNode, new_green: GreenNode) -> RedNode {
         match self.parent() {
             Some(parent) => parent.replace_child(self.index_in_parent, new_green.into()),
-            None => return RedNodeData::new_root(new_green),
+            None => RedNodeData::new_root(new_green),
         }
     }
 }

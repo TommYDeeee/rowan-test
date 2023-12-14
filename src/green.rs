@@ -61,7 +61,7 @@ impl GreenNodeData {
         self.len
     }
 
-    pub fn children<'a>(&'a self) -> impl Iterator<Item = GreenElement> + '_ {
+    pub fn children(&self) -> impl Iterator<Item = GreenElement> + '_ {
         self.children.iter().cloned()
     }
 
