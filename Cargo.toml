@@ -6,3 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+text-size = "1.1.0"
+countme = "3.0.0"
+memoffset = "0.9"

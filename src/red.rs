@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{rc::Rc, sync::Arc};
+use std::{iter, rc::Rc, sync::Arc};
 
 use crate::{green::GreenElement, GreenNode, GreenToken, NodeOrToken, SyntaxKind};
 
@@ -50,6 +50,20 @@ impl RedNodeData {
 
     pub fn parent(&self) -> Option<&RedNode> {
         self.parent.as_ref()
+    }
+
+    pub fn ancestors<'a>(self: &'a RedNode) -> impl Iterator<Item = &'a RedNode> {
+        iter::successors(Some(self), |&it| it.parent())
+    }
+
+    // O(1)
+    pub fn nth_child<'a>(self: &'a RedNode) -> Option<RedElement> {
+        todo!()
+    }
+
+    // O(log(n))
+    pub fn child_containing_range<'a>(self: &'a RedNode, range: (usize, usize)) -> Option<RedElement> {
+        todo!()
     }
 
     pub fn children<'a>(self: &'a RedNode) -> impl Iterator<Item = RedElement> + 'a {
