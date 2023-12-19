@@ -62,7 +62,10 @@ impl RedNodeData {
     }
 
     // O(log(n))
-    pub fn child_containing_range<'a>(self: &'a RedNode, range: (usize, usize)) -> Option<RedElement> {
+    pub fn child_containing_range<'a>(
+        self: &'a RedNode,
+        range: (usize, usize),
+    ) -> Option<RedElement> {
         todo!()
     }
 
@@ -107,12 +110,6 @@ impl RedNodeData {
     }
 }
 
-impl fmt::Display for RedNodeData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self.green(), f)
-    }
-}
-
 impl RedTokenData {
     pub fn green(&self) -> &GreenToken {
         &self.green
@@ -132,12 +129,6 @@ impl RedTokenData {
 
     pub fn parent(&self) -> Option<&RedNode> {
         self.parent.as_ref()
-    }
-}
-
-impl fmt::Display for RedTokenData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self.green(), f)
     }
 }
 
@@ -167,15 +158,6 @@ impl RedElement {
         match self {
             NodeOrToken::Node(it) => it.parent(),
             NodeOrToken::Token(it) => it.parent(),
-        }
-    }
-}
-
-impl fmt::Display for RedElement {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            NodeOrToken::Node(it) => fmt::Display::fmt(it, f),
-            NodeOrToken::Token(it) => fmt::Display::fmt(it, f),
         }
     }
 }

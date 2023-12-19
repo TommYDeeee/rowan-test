@@ -19,14 +19,19 @@ mod green;
 pub mod red;
 
 pub mod api;
+mod utility_types;
 
+mod cow_mut;
 #[allow(unsafe_code)]
 mod arc;
 pub mod ast;
 
 pub use text_size::{TextLen, TextRange, TextSize};
 
-pub use crate::green::{
-    Checkpoint, Children, GreenNode, GreenNodeBuilder, GreenNodeData, GreenToken, GreenTokenData,
-    NodeCache, SyntaxKind,
+pub use crate::{
+    green::{
+        Checkpoint, Children, GreenNode, GreenNodeBuilder, GreenNodeData, GreenToken,
+        GreenTokenData, NodeCache, SyntaxKind,
+    },
+    utility_types::{Direction, NodeOrToken, TokenAtOffset, WalkEvent},
 };
