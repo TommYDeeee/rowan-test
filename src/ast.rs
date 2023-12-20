@@ -64,13 +64,17 @@ pub struct SyntaxNodePtr<L: Language> {
 impl<L: Language> SyntaxNodePtr<L> {
     /// Returns a [`SyntaxNodePtr`] for the node.
     pub fn new(node: &SyntaxNode<L>) -> Self {
-        Self { kind: node.kind(), range: node.text_range() }
+        Self {
+            kind: node.kind(),
+            range: node.text_range(),
+        }
     }
 
     /// Like [`Self::try_to_node`] but panics instead of returning `None` on
     /// failure.
     pub fn to_node(&self, root: &SyntaxNode<L>) -> SyntaxNode<L> {
-        self.try_to_node(root).unwrap_or_else(|| panic!("can't resolve {self:?} with {root:?}"))
+        self.try_to_node(root)
+            .unwrap_or_else(|| panic!("can't resolve {self:?} with {root:?}"))
     }
 
     /// "Dereferences" the pointer to get the [`SyntaxNode`] it points to.
@@ -89,8 +93,10 @@ impl<L: Language> SyntaxNodePtr<L> {
         if root.parent().is_some() {
             return None;
         }
-        successors(Some(root.clone()), |node| node.child_or_token_at_range(self.range)?.into_node())
-            .find(|it| it.text_range() == self.range && it.kind() == self.kind)
+        successors(Some(root.clone()), |node| {
+            node.child_or_token_at_range(self.range)?.into_node()
+        })
+        .find(|it| it.text_range() == self.range && it.kind() == self.kind)
     }
 
     /// Casts this to an [`AstPtr`] to the given node type if possible.
@@ -120,12 +126,15 @@ pub struct AstPtr<N: AstNode> {
 impl<N: AstNode> AstPtr<N> {
     /// Returns an [`AstPtr`] for the node.
     pub fn new(node: &N) -> Self {
-        Self { raw: SyntaxNodePtr::new(node.syntax()) }
+        Self {
+            raw: SyntaxNodePtr::new(node.syntax()),
+        }
     }
 
     /// Like `Self::try_to_node` but panics on failure.
     pub fn to_node(&self, root: &SyntaxNode<N::Language>) -> N {
-        self.try_to_node(root).unwrap_or_else(|| panic!("can't resolve {self:?} with {root:?}"))
+        self.try_to_node(root)
+            .unwrap_or_else(|| panic!("can't resolve {self:?} with {root:?}"))
     }
 
     /// Given the root node containing the node `n` that `self` is a pointer to,
@@ -156,7 +165,9 @@ impl<N: AstNode> fmt::Debug for AstPtr<N> {
 
 impl<N: AstNode> Clone for AstPtr<N> {
     fn clone(&self) -> Self {
-        Self { raw: self.raw.clone() }
+        Self {
+            raw: self.raw.clone(),
+        }
     }
 }
 
@@ -188,7 +199,10 @@ pub struct AstChildren<N: AstNode> {
 
 impl<N: AstNode> AstChildren<N> {
     fn new(parent: &SyntaxNode<N::Language>) -> Self {
-        AstChildren { inner: parent.children(), ph: PhantomData }
+        AstChildren {
+            inner: parent.children(),
+            ph: PhantomData,
+        }
     }
 }
 
@@ -212,6 +226,9 @@ pub mod support {
     }
 
     pub fn token<L: Language>(parent: &SyntaxNode<L>, kind: L::Kind) -> Option<SyntaxToken<L>> {
-        parent.children_with_tokens().filter_map(|it| it.into_token()).find(|it| it.kind() == kind)
+        parent
+            .children_with_tokens()
+            .filter_map(|it| it.into_token())
+            .find(|it| it.kind() == kind)
     }
 }

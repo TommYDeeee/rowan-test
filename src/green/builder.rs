@@ -61,7 +61,7 @@ impl GreenNodeBuilder<'_> {
     /// `start_node_at`.
     /// Example:
     /// ```rust
-    /// # use crate::{GreenNodeBuilder, SyntaxKind};
+    /// # use rowan_test::{GreenNodeBuilder, SyntaxKind};
     /// # const PLUS: SyntaxKind = SyntaxKind(0);
     /// # const OPERATION: SyntaxKind = SyntaxKind(1);
     /// # struct Parser;
