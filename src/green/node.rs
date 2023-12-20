@@ -120,7 +120,7 @@ impl fmt::Display for GreenNodeData {
 impl GreenNodeData {
     #[inline]
     fn header(&self) -> &GreenNodeHead {
-        &self.data.header()
+        &self.data.header
     }
 
     #[inline]
@@ -154,13 +154,12 @@ impl GreenNodeData {
     ) -> Option<(usize, TextSize, GreenElementRef<'_>)> {
         let idx = self
             .slice()
-            .binary_search(|it| {
+            .binary_search_by(|it| {
                 let child_range = it.rel_range();
                 TextRange::ordering(child_range, rel_range)
             })
-            // This handles empty ranges
+            // XXX: this handles empty ranges
             .unwrap_or_else(|it| it.saturating_sub(1));
-
         let child = &self
             .slice()
             .get(idx)
@@ -209,7 +208,8 @@ impl ops::Deref for GreenNode {
     #[inline]
     fn deref(&self) -> &GreenNodeData {
         unsafe {
-            let repr = &*(&self.ptr as *const Repr as *const ReprThin);
+            let repr: &Repr = &self.ptr;
+            let repr: &ReprThin = &*(repr as *const Repr as *const ReprThin);
             mem::transmute::<&ReprThin, &GreenNodeData>(repr)
         }
     }

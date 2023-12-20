@@ -1,151 +1,217 @@
-use std::{net::IpAddr, sync::Arc};
+//! Working with abstract syntax trees.
+//!
+//! In rowan, syntax trees are transient objects. That means that we create
+//! trees when we need them, and tear them down to save memory. In this
+//! architecture, hanging on to a particular syntax node for a long time is
+//! ill-advisable, as that keeps the whole tree resident.
+//!
+//! Instead, we provide a [`SyntaxNodePtr`] type, which stores information about
+//! the _location_ of a particular syntax node in a tree. It's a small type
+//! which can be cheaply stored, and which can be resolved to a real
+//! [`SyntaxNode`] when necessary.
+//!
+//! We also provide an [`AstNode`] trait for typed AST wrapper APIs over rowan
+//! nodes.
 
-use crate::{
-    green::GreenElement, kinds, red::RedElement, GreenNode, GreenNodeData, GreenToken,
-    GreenTokenData, RedNode, RedNodeData, SyntaxKind,
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    iter::successors,
+    marker::PhantomData,
 };
 
-trait AstNode {
-    fn cast(node: RedNode) -> Option<Self>
+use crate::{Language, SyntaxNode, SyntaxNodeChildren, TextRange};
+
+/// The main trait to go from untyped [`SyntaxNode`] to a typed AST. The
+/// conversion itself has zero runtime cost: AST and syntax nodes have exactly
+/// the same representation: a pointer to the tree root and a pointer to the
+/// node itself.
+pub trait AstNode {
+    type Language: Language;
+
+    fn can_cast(kind: <Self::Language as Language>::Kind) -> bool
     where
         Self: Sized;
 
-    fn syntax(&self) -> &RedNode;
+    fn cast(node: SyntaxNode<Self::Language>) -> Option<Self>
+    where
+        Self: Sized;
 
-    fn child_of_type<N: AstNode>(&self) -> Option<N> {
-        self.syntax()
-            .children()
-            .filter_map(RedElement::into_node)
-            .find_map(N::cast)
+    fn syntax(&self) -> &SyntaxNode<Self::Language>;
+
+    fn clone_for_update(&self) -> Self
+    where
+        Self: Sized,
+    {
+        Self::cast(self.syntax().clone_for_update()).unwrap()
+    }
+
+    fn clone_subtree(&self) -> Self
+    where
+        Self: Sized,
+    {
+        Self::cast(self.syntax().clone_subtree()).unwrap()
     }
 }
 
-struct Struct(RedNode);
-impl AstNode for Struct {
-    fn cast(node: RedNode) -> Option<Self> {
-        if node.kind() == kinds::STRUCT {
-            Some(Struct(node))
-        } else {
-            None
+/// A "pointer" to a [`SyntaxNode`], via location in the source code.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct SyntaxNodePtr<L: Language> {
+    kind: L::Kind,
+    range: TextRange,
+}
+
+impl<L: Language> SyntaxNodePtr<L> {
+    /// Returns a [`SyntaxNodePtr`] for the node.
+    pub fn new(node: &SyntaxNode<L>) -> Self {
+        Self { kind: node.kind(), range: node.text_range() }
+    }
+
+    /// Like [`Self::try_to_node`] but panics instead of returning `None` on
+    /// failure.
+    pub fn to_node(&self, root: &SyntaxNode<L>) -> SyntaxNode<L> {
+        self.try_to_node(root).unwrap_or_else(|| panic!("can't resolve {self:?} with {root:?}"))
+    }
+
+    /// "Dereferences" the pointer to get the [`SyntaxNode`] it points to.
+    ///
+    /// Returns `None` if the node is not found, so make sure that the `root`
+    /// syntax tree is equivalent to (i.e. is build from the same text from) the
+    /// tree which was originally used to get this [`SyntaxNodePtr`].
+    ///
+    /// Also returns `None` if `root` is not actually a root (i.e. it has a
+    /// parent).
+    ///
+    /// The complexity is linear in the depth of the tree and logarithmic in
+    /// tree width. As most trees are shallow, thinking about this as
+    /// `O(log(N))` in the size of the tree is not too wrong!
+    pub fn try_to_node(&self, root: &SyntaxNode<L>) -> Option<SyntaxNode<L>> {
+        if root.parent().is_some() {
+            return None;
         }
+        successors(Some(root.clone()), |node| node.child_or_token_at_range(self.range)?.into_node())
+            .find(|it| it.text_range() == self.range && it.kind() == self.kind)
     }
 
-    fn syntax(&self) -> &RedNode {
-        &self.0
-    }
-}
-
-impl Struct {
-    fn name(&self) -> Option<Name> {
-        self.child_of_type()
-    }
-
-    fn fields<'a>(&'a self) -> impl Iterator<Item = Field> + 'a {
-        self.syntax()
-            .children()
-            .filter_map(RedElement::into_node)
-            .filter_map(Field::cast)
-    }
-}
-
-struct Field(RedNode);
-impl AstNode for Field {
-    fn cast(node: RedNode) -> Option<Self> {
-        if node.kind() == kinds::FIELD {
-            Some(Field(node))
-        } else {
-            None
+    /// Casts this to an [`AstPtr`] to the given node type if possible.
+    pub fn cast<N: AstNode<Language = L>>(self) -> Option<AstPtr<N>> {
+        if !N::can_cast(self.kind) {
+            return None;
         }
+        Some(AstPtr { raw: self })
     }
 
-    fn syntax(&self) -> &RedNode {
-        &self.0
+    /// Returns the kind of the syntax node this points to.
+    pub fn kind(&self) -> L::Kind {
+        self.kind
+    }
+
+    /// Returns the range of the syntax node this points to.
+    pub fn text_range(&self) -> TextRange {
+        self.range
     }
 }
 
-impl Field {
-    fn name(&self) -> Option<Name> {
-        self.child_of_type()
-    }
+/// Like [`SyntaxNodePtr`], but remembers the type of node.
+pub struct AstPtr<N: AstNode> {
+    raw: SyntaxNodePtr<N::Language>,
 }
 
-struct Name(RedNode);
-impl AstNode for Name {
-    fn cast(node: RedNode) -> Option<Self> {
-        if node.kind() == kinds::NAME {
-            Some(Name(node))
-        } else {
-            None
+impl<N: AstNode> AstPtr<N> {
+    /// Returns an [`AstPtr`] for the node.
+    pub fn new(node: &N) -> Self {
+        Self { raw: SyntaxNodePtr::new(node.syntax()) }
+    }
+
+    /// Like `Self::try_to_node` but panics on failure.
+    pub fn to_node(&self, root: &SyntaxNode<N::Language>) -> N {
+        self.try_to_node(root).unwrap_or_else(|| panic!("can't resolve {self:?} with {root:?}"))
+    }
+
+    /// Given the root node containing the node `n` that `self` is a pointer to,
+    /// returns `n` if possible. See [`SyntaxNodePtr::try_to_node`].
+    pub fn try_to_node(&self, root: &SyntaxNode<N::Language>) -> Option<N> {
+        N::cast(self.raw.try_to_node(root)?)
+    }
+
+    /// Returns the underlying [`SyntaxNodePtr`].
+    pub fn syntax_node_ptr(&self) -> SyntaxNodePtr<N::Language> {
+        self.raw.clone()
+    }
+
+    /// Casts this to an [`AstPtr`] to the given node type if possible.
+    pub fn cast<U: AstNode<Language = N::Language>>(self) -> Option<AstPtr<U>> {
+        if !U::can_cast(self.raw.kind) {
+            return None;
         }
-    }
-
-    fn syntax(&self) -> &RedNode {
-        &self.0
+        Some(AstPtr { raw: self.raw })
     }
 }
 
-fn make_token(kind: SyntaxKind, text: &str) -> GreenToken {
-    Arc::new(GreenTokenData::new(kind, text.to_string()))
+impl<N: AstNode> fmt::Debug for AstPtr<N> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AstPtr").field("raw", &self.raw).finish()
+    }
 }
 
-fn make_node(kind: SyntaxKind, children: Vec<GreenElement>) -> GreenNode {
-    Arc::new(GreenNodeData::new(kind, children))
+impl<N: AstNode> Clone for AstPtr<N> {
+    fn clone(&self) -> Self {
+        Self { raw: self.raw.clone() }
+    }
 }
 
-fn make_whitespace(ws: &str) -> GreenToken {
-    make_token(kinds::WHITESPACE, ws)
+impl<N: AstNode> PartialEq for AstPtr<N> {
+    fn eq(&self, other: &AstPtr<N>) -> bool {
+        self.raw == other.raw
+    }
 }
 
-fn make_name(name: &str) -> GreenNode {
-    make_node(kinds::NAME, vec![make_token(kinds::IDENT, name).into()])
+impl<N: AstNode> Eq for AstPtr<N> {}
+
+impl<N: AstNode> Hash for AstPtr<N> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.raw.hash(state)
+    }
 }
 
-fn make_field_name(name: &str, ty: &str) -> GreenNode {
-    Arc::new(GreenNodeData::new(
-        kinds::FIELD,
-        vec![
-            make_whitespace("    ").into(),
-            make_name(name).into(),
-            make_token(kinds::COLON, ":").into(),
-            make_whitespace(" ").into(),
-            make_node(kinds::TYPE, vec![make_token(kinds::IDENT, ty).into()]).into(),
-            make_token(kinds::COMMA, ",").into(),
-            make_whitespace("\n").into(),
-        ],
-    ))
+impl<N: AstNode> From<AstPtr<N>> for SyntaxNodePtr<N::Language> {
+    fn from(ptr: AstPtr<N>) -> SyntaxNodePtr<N::Language> {
+        ptr.raw
+    }
 }
 
-fn make_struct(name: &str, fields: Vec<GreenNode>) -> GreenNode {
-    let mut children: Vec<GreenElement> = Vec::new();
-    children.push(make_token(kinds::STRUCT_KW, "struct").into());
-    children.push(make_whitespace(" ").into());
-    children.push(make_name(name).into());
-    children.push(make_whitespace(" ").into());
-    children.push(make_token(kinds::L_CURLY, "{").into());
-    children.push(make_whitespace("\n").into());
-    children.extend(fields.into_iter().map(GreenElement::from));
-    children.push(make_token(kinds::R_CURLY, "}").into());
-    make_node(kinds::STRUCT, children)
+#[derive(Debug, Clone)]
+pub struct AstChildren<N: AstNode> {
+    inner: SyntaxNodeChildren<N::Language>,
+    ph: PhantomData<N>,
 }
 
-// struct Foo {
-//     foo: String,
-//     bar: IpAddr,
-// }
+impl<N: AstNode> AstChildren<N> {
+    fn new(parent: &SyntaxNode<N::Language>) -> Self {
+        AstChildren { inner: parent.children(), ph: PhantomData }
+    }
+}
 
-#[test]
-fn ask_smoke_test() {
-    let strukt = make_struct(
-        "Foo",
-        vec![
-            make_field_name("foo", "String"),
-            make_field_name("bar", "IpAddr"),
-        ],
-    );
+impl<N: AstNode> Iterator for AstChildren<N> {
+    type Item = N;
+    fn next(&mut self) -> Option<N> {
+        self.inner.find_map(N::cast)
+    }
+}
 
-    let strukt = Struct::cast(RedNodeData::new_root(strukt)).unwrap();
-    eprintln!("{}", strukt.name().unwrap().0);
-    for (i, field) in strukt.fields().enumerate() {
-        println!("field {}: {}", i, field.0)
+pub mod support {
+    use super::{AstChildren, AstNode};
+    use crate::{Language, SyntaxNode, SyntaxToken};
+
+    pub fn child<N: AstNode>(parent: &SyntaxNode<N::Language>) -> Option<N> {
+        parent.children().find_map(N::cast)
+    }
+
+    pub fn children<N: AstNode>(parent: &SyntaxNode<N::Language>) -> AstChildren<N> {
+        AstChildren::new(parent)
+    }
+
+    pub fn token<L: Language>(parent: &SyntaxNode<L>, kind: L::Kind) -> Option<SyntaxToken<L>> {
+        parent.children_with_tokens().filter_map(|it| it.into_token()).find(|it| it.kind() == kind)
     }
 }
