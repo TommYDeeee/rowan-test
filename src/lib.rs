@@ -12,6 +12,7 @@ This structure should implement the following:
 
 #![forbid(unconditional_recursion, future_incompatible)]
 #![deny(unsafe_code)]
+#![feature(offset_of)]
 
 #[allow(unsafe_code)]
 mod green;
